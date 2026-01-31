@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevOps Diva | Dashboard</title>
+    <style>
+        :root {
+            --primary: #ff85a2;
+            --secondary: #fbb1bd;
+            --bg: #fff5f7;
+            --text: #4a4a4a;
+        }
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 30px;
+            box-shadow: 0 20px 40px rgba(255, 133, 162, 0.1);
+            text-align: center;
+            border: 1px solid var(--secondary);
+            max-width: 400px;
+        }
+        .status-badge {
+            background: var(--secondary);
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        h1 { color: var(--primary); margin-top: 20px; }
+        p { line-height: 1.6; opacity: 0.8; }
+        .footer { font-size: 0.7rem; margin-top: 30px; color: var(--secondary); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <span class="status-badge">Pipeline Active</span>
+        <h1>Secure Deploy ✨</h1>
+        <p>Your Multi-stage Docker image is being scanned by <strong>Trivy</strong> and pushed to <strong>Quay.io</strong>.</p>
+        <div class="footer">Professionalism meets Elegance.</div>
+    </div>
+</body>
+</html>
