@@ -1,7 +1,8 @@
-ame: Main Pipeline
+name: Main Pipeline
+
 on:
   push:
-    branches: [ "Ebtehal/githubActions" ]
+    branches: [ "main", "Ebtehal/githubActions" ]
   workflow_dispatch:
     inputs:
       deployment_target:
@@ -20,11 +21,12 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. Build Docker Image
       - name: Build Docker Image
-        run: docker build -t quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }} .
+        run: |
+          FULL_TAG=${{ github.sha }}
+          SHORT_TAG=$(echo $FULL_TAG | cut -c1-7)
+          docker build -t quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${FULL_TAG} .
 
-      # 2. Trivy Scan & Generate Report
       - name: Trivy Scan
         uses: aquasecurity/trivy-action@master
         with:
@@ -32,26 +34,25 @@ jobs:
           format: 'template'
           template: '@/contrib/html.tpl'
           output: 'report.html'
-          exit-code: '0'  # علشان يكمل حتى لو لقى ثغرات
+          exit-code: '1'
 
-      # 3. Prepare Artifacts (زي ما مطلوب في الرسمة)
       - name: Prepare Artifacts
         run: |
           mkdir -p scan-dir
           echo "Nginx version: alpine" > scan-dir/nginx.txt
           mkdir -p HTML
-          cp report.html HTML/report.html
+          if [ -f report.html ]; then
+            cp report.html HTML/report.html
+          else
+            echo "No Trivy report found; continuing."
+          fi
 
-      # 4. Upload Artifacts
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: pipeline-artifacts
-          path: |
-            scan-dir/
-            HTML/
+      - name: Prepare Artifacts
+        if: always() # خلي الخطوة دي تشتغل حتى لو الـ Scan فشل عشان ترفع التقرير
+        run: |
+          mkdir -p HTML
+          [ -f report.html ] && cp report.html HTML/report.html || echo "No report"
 
-      # 5. Push to Quay.io
       - name: Login to Quay
         uses: docker/login-action@v3
         with:
@@ -60,35 +61,39 @@ jobs:
           password: ${{ secrets.QUAY_TOKEN }}
 
       - name: Push Image
-        run: docker push quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }}
+        run: |
+          docker tag quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }} \
+                     quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:latest
+          docker push quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }}
+          docker push quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:latest
 
   deploy:
-    needs: ci-cd # مش بتبدأ غير لو الـ Scan والـ Push خلصوا بنجاح
-    # لو اخترنا Local هيشتغل على الـ Runner بتاعك، لو EC2 هيشتغل على GitHub hosted
-    runs-on: ${{ github.event.inputs.deployment_target == 'Local' && 'self-hosted' || 'ubuntu-latest' }}
-    
+    needs: ci-cd
+    # ❗ GitHub لا يدعم `self-hosted` تلقائي بدون runner مُعد مسبقًا!
+    # لذا نستخدم دائمًا ubuntu-latest، ونتحكم في المنطق داخليًا.
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'  # Deploy فقط لو تم تشغيله يدويًا
+
     steps:
-      # سيناريو الـ EC2: بنستخدم SSH لرمي الأوامر
-      - name: Deploying to EC2 via SSH
+      - name: Deploy to EC2
         if: ${{ github.event.inputs.deployment_target == 'EC2' }}
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            docker login quay.io -u ${{ secrets.QUAY_USERNAME }} -p ${{ secrets.QUAY_TOKEN }}
-            docker pull quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:latest
+            docker login -u ${{ secrets.QUAY_USERNAME }} -p ${{ secrets.QUAY_TOKEN }} quay.io
+            docker pull quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }}
             docker stop girly-app || true
             docker rm girly-app || true
-            docker run -d --name girly-app -p 80:80 quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:latest
+            docker run -d --name girly-app -p 80:80 quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }}
 
-      # سيناريو الـ Local: الأوامر بتنفذ مباشرة على جهازك الـ Lenovo
-      - name: Deploying Locally on Runner
+      - name: Deploy Locally (on GitHub Runner)
         if: ${{ github.event.inputs.deployment_target == 'Local' }}
         run: |
-          docker login quay.io -u ${{ secrets.QUAY_USERNAME }} -p ${{ secrets.QUAY_TOKEN }}
-          docker pull quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:latest
+          echo "${{ secrets.QUAY_TOKEN }}" | docker login quay.io -u ${{ secrets.QUAY_USERNAME }} --password-stdin
+          docker pull quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }}
           docker stop girly-app || true
           docker rm girly-app || true
-          docker run -d --name girly-app -p 8080:80 quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:latest
+          docker run -d --name girly-app -p 8080:80 quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }}
