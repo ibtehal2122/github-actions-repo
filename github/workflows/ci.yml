@@ -25,18 +25,21 @@ jobs:
         run: |
           FULL_TAG=${{ github.sha }}
           SHORT_TAG=$(echo $FULL_TAG | cut -c1-7)
-          docker build -t quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${FULL_TAG} .
+          docker build -t quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${FULL_TAG} \
+                       -t quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${SHORT_TAG} .
 
       - name: Trivy Scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0
         with:
           image-ref: 'quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }}'
           format: 'template'
           template: '@/contrib/html.tpl'
           output: 'report.html'
           exit-code: '1'
+          severity: 'CRITICAL'
 
       - name: Prepare Artifacts
+        if: always()
         run: |
           mkdir -p scan-dir
           echo "Nginx version: alpine" > scan-dir/nginx.txt
@@ -47,11 +50,13 @@ jobs:
             echo "No Trivy report found; continuing."
           fi
 
-      - name: Prepare Artifacts
-        if: always() # خلي الخطوة دي تشتغل حتى لو الـ Scan فشل عشان ترفع التقرير
-        run: |
-          mkdir -p HTML
-          [ -f report.html ] && cp report.html HTML/report.html || echo "No report"
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-artifacts
+          path: |
+            scan-dir/
+            HTML/
 
       - name: Login to Quay
         uses: docker/login-action@v3
