@@ -1,5 +1,4 @@
 name: Main Pipeline
-
 on:
   push:
     branches: [ "main" ]
@@ -29,7 +28,7 @@ jobs:
                        -t quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${SHORT_TAG} .
 
       - name: Trivy Scan
-        uses: aquasecurity/trivy-action@v0
+        uses: aquasecurity/trivy-action@master
         with:
           image-ref: 'quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }}'
           format: 'template'
