@@ -1,0 +1,41 @@
+name: Security Check (Checkov)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  checkov-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install Checkov & Converter
+        run: |
+          pip install checkov json2html
+
+      - name: Run Checkov (Scan Dockerfile)
+        # بنعمل scan ونطلع النتيجة json عشان نعرف نحولها لـ html
+        # الـ || true عشان الـ pipeline ميفشلش لو لقى ثغرات ويكمل يطلع التقرير
+        run: |
+          checkov -f Dockerfile --output json > checkov_report.json || true
+
+      - name: Convert JSON to HTML
+        run: |
+          python -c "import json; from json2html import *; 
+          with open('checkov_report.json') as f: data = json.load(f); 
+          html = json2html.convert(json = data); 
+          with open('checkov_report.html', 'w') as f: f.write(html)"
+
+      - name: Upload HTML Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: Checkov-Security-Report
+          path: checkov_report.html
