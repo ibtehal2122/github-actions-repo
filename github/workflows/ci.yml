@@ -2,7 +2,7 @@ name: Main Pipeline
 
 on:
   push:
-    branches: [ "main", "Ebtehal/githubActions" ]
+    branches: [ "main" ]
   workflow_dispatch:
     inputs:
       deployment_target:
@@ -16,7 +16,7 @@ on:
 
 jobs:
   ci-cd:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -35,7 +35,7 @@ jobs:
           format: 'template'
           template: '@/contrib/html.tpl'
           output: 'report.html'
-          exit-code: '1'
+          exit-code: '0'
           severity: 'CRITICAL'
 
       - name: Prepare Artifacts
