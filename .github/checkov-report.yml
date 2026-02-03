@@ -1,0 +1,44 @@
+name: Security Check (Advanced Report)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  checkov-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 1. تسطيب الأدوات اللي السكريبت محتاجها
+      - name: Install Dependencies (jq & wkhtmltopdf)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq wkhtmltopdf
+
+      - name: Install Checkov
+        run: pip install checkov
+
+      # 2. تشغيل Checkov وحفظ النتيجة في ملف JSON
+      - name: Run Checkov (Scan Dockerfile)
+        run: |
+          checkov -f Dockerfile --output json > checkov_report.json || true
+
+      # 3. تشغيل السكريبت بتاعك لتحويل الـ JSON لـ HTML & PDF
+      - name: Generate Custom HTML/PDF Report
+        run: |
+          # ندي صلاحية للسكريبت الأول
+          chmod +x .github/scripts/generate_report.sh
+          # نشغله
+          ./.github/scripts/generate_report.sh
+
+      # 4. رفع التقارير عشان تشوفيها
+      - name: Upload Security Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: Professional-Security-Report
+          path: |
+            report.html
+            report.pdf
