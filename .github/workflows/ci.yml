@@ -1,0 +1,104 @@
+name: Main Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      deployment_target:
+        description: 'Choose where to deploy ✨'
+        required: true
+        default: 'Local'
+        type: choice
+        options:
+          - EC2
+          - Local
+
+jobs:
+  ci-cd:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build Docker Image
+        run: |
+          FULL_TAG=${{ github.sha }}
+          SHORT_TAG=$(echo $FULL_TAG | cut -c1-7)
+          docker build -t quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${FULL_TAG} \
+                       -t quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${SHORT_TAG} .
+
+      - name: Trivy Scan
+        uses: aquasecurity/trivy-action@v0
+        with:
+          image-ref: 'quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }}'
+          format: 'template'
+          template: '@/contrib/html.tpl'
+          output: 'report.html'
+          exit-code: '0'
+          severity: 'CRITICAL'
+
+      - name: Prepare Artifacts
+        if: always()
+        run: |
+          mkdir -p scan-dir
+          echo "Nginx version: alpine" > scan-dir/nginx.txt
+          mkdir -p HTML
+          if [ -f report.html ]; then
+            cp report.html HTML/report.html
+          else
+            echo "No Trivy report found; continuing."
+          fi
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-artifacts
+          path: |
+            scan-dir/
+            HTML/
+
+      - name: Login to Quay
+        uses: docker/login-action@v3
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_TOKEN }}
+
+      - name: Push Image
+        run: |
+          docker tag quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }} \
+                     quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:latest
+          docker push quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }}
+          docker push quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:latest
+
+  deploy:
+    needs: ci-cd
+    # ❗ GitHub لا يدعم `self-hosted` تلقائي بدون runner مُعد مسبقًا!
+    # لذا نستخدم دائمًا ubuntu-latest، ونتحكم في المنطق داخليًا.
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'  # Deploy فقط لو تم تشغيله يدويًا
+
+    steps:
+      - name: Deploy to EC2
+        if: ${{ github.event.inputs.deployment_target == 'EC2' }}
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            docker login -u ${{ secrets.QUAY_USERNAME }} -p ${{ secrets.QUAY_TOKEN }} quay.io
+            docker pull quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }}
+            docker stop girly-app || true
+            docker rm girly-app || true
+            docker run -d --name girly-app -p 80:80 quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }}
+
+      - name: Deploy Locally (on GitHub Runner)
+        if: ${{ github.event.inputs.deployment_target == 'Local' }}
+        run: |
+          echo "${{ secrets.QUAY_TOKEN }}" | docker login quay.io -u ${{ secrets.QUAY_USERNAME }} --password-stdin
+          docker pull quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }}
+          docker stop girly-app || true
+          docker rm girly-app || true
+          docker run -d --name girly-app -p 8080:80 quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }}
