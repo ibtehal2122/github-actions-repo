@@ -1,21 +1,13 @@
 name: Main Pipeline
+
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch:
-    inputs:
-      deployment_target:
-        description: 'Choose where to deploy ✨'
-        required: true
-        default: 'Local'
-        type: choice
-        options:
-          - EC2
-          - Local
+  workflow_dispatch: # زرار للتشغيل اليدوي بدون اختيارات
 
 jobs:
   ci-cd:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # الـ Build والـ Scan يفضلوا على سيرفرات جيت هاب (أسرع وأنظف)
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -77,31 +69,19 @@ jobs:
 
   deploy:
     needs: ci-cd
-    # ❗ GitHub لا يدعم `self-hosted` تلقائي بدون runner مُعد مسبقًا!
-    # لذا نستخدم دائمًا ubuntu-latest، ونتحكم في المنطق داخليًا.
-    runs-on: self-hosted
-    if: github.event_name == 'workflow_dispatch'  # Deploy فقط لو تم تشغيله يدويًا
-
+    runs-on: self-hosted  # ✅ هينزل يرن على جهازك أنتِ
     steps:
-      - name: Deploy to EC2
-        if: ${{ github.event.inputs.deployment_target == 'EC2' }}
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            docker login -u ${{ secrets.QUAY_USERNAME }} -p ${{ secrets.QUAY_TOKEN }} quay.io
-            docker pull quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }}
-            docker stop girly-app || true
-            docker rm girly-app || true
-            docker run -d --name girly-app -p 80:80 quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }}
-
-      - name: Deploy Locally (on GitHub Runner)
-        if: ${{ github.event.inputs.deployment_target == 'Local' }}
+      - name: Deploy Locally (Self-Hosted)
         run: |
+          # 1. Login
           echo "${{ secrets.QUAY_TOKEN }}" | docker login quay.io -u ${{ secrets.QUAY_USERNAME }} --password-stdin
+          
+          # 2. Pull the image
           docker pull quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }}
+          
+          # 3. Stop & Remove old container (if exists)
           docker stop girly-app || true
           docker rm girly-app || true
+          
+          # 4. Run new container
           docker run -d --name girly-app -p 8080:80 quay.io/${{ secrets.QUAY_USERNAME }}/girly-app:${{ github.sha }}
