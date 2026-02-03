@@ -1,0 +1,22 @@
+name: Validation Pipeline
+
+on:
+  pull_request:     # يشتغل لما حد يعمل Pull Request
+    branches: [ "main" ]
+  workflow_dispatch: # زرار للتشغيل اليدوي
+
+jobs:
+  validate-files:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Check Dockerfile Existence
+        run: |
+          if [ -f "Dockerfile" ]; then
+            echo "✅ Dockerfile exists. Good to go!"
+          else
+            echo "❌ Error: Dockerfile not found!"
+            exit 1
+          fi
