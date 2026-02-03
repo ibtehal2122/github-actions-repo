@@ -15,7 +15,7 @@ on:
 
 jobs:
   ci-cd:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -75,7 +75,7 @@ jobs:
     needs: ci-cd
     # ❗ GitHub لا يدعم `self-hosted` تلقائي بدون runner مُعد مسبقًا!
     # لذا نستخدم دائمًا ubuntu-latest، ونتحكم في المنطق داخليًا.
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: github.event_name == 'workflow_dispatch'  # Deploy فقط لو تم تشغيله يدويًا
 
     steps:
